@@ -3,13 +3,11 @@
 //
 #include <iostream>
 #include <fstream>
-#include <sstream>
 #include <regex>
 #include <cmath>
 #include <cfloat>
 
 using namespace std;
-
 /* 缓冲区大小，每个8bytes*/
 #define SIZE 100000
 
@@ -36,18 +34,15 @@ struct Segment
 };
 
 /* 判断字符串是否能转为合法的 double*/
-bool isValid(string s)
+bool isValid(const string& s)
 {
-    if (!regex_match(s, regex("[\\.\\deE-]+"))
-            || (s.find('-') != -1 && s.find_last_of('-') != 0)
-            || (s.find('.') != -1 && s.find_last_of('.') != s.find('.'))
-            || (s.find('e') != -1 && s.find_last_of('e') != s.find('e'))
-            || (s.find('E') != -1 && s.find_last_of('E') != s.find('E')))
+    for (char c : s)
     {
-        // 显示非法条目
-        cout << s << endl;
-        illegal++;
-        return false;
+        if (!isdigit(c) && c != '-' && c != '.' && c != 'e' && c != 'E')
+        {
+            cout << "读取到第" << ++illegal << "个非法条目：" << s << endl;
+            return false;
+        }
     }
     return true;
 }
@@ -55,20 +50,15 @@ bool isValid(string s)
 /* 将一行字符串转为 double*/
 double stringToDouble(string s)
 {
+    char *ptr;
     double res;
-    // 科学计数法，需要提取出 e 或 E 之前和之后的部分
-    if (s.find('e') != -1 || s.find('E') != -1)
+    // 科学计数法，需要提取出 E 之前和之后的部分
+    if (int posE = s.find('E') != -1)
     {
         // 判断正负号
         bool flag = (s[0] != '-');
-        // 找到 e 或 E 的位置
-        int posE = (s.find('e') == -1) ? s.find('E') : s.find('e');
-        double part1;
-        int part2;
-        stringstream ss1(s.substr(0, posE));
-        ss1 >> part1;
-        stringstream ss2(s.substr(posE + 2));
-        ss2 >> part2;
+        double part1 = strtod(s.substr(0, posE).data(), &ptr);
+        int part2 = atoi(s.substr(posE + 2).data());
         res = part1 * pow(10, part2);
         if (!flag)
         {
@@ -78,8 +68,7 @@ double stringToDouble(string s)
     // 非科学计数法，直接转数字
     else
     {
-        stringstream ss(s);
-        ss >> res;
+        res = strtod(s.data(), &ptr);
     }
     return res;
 }
@@ -116,8 +105,7 @@ string doubleToString(double n)
     if (pointPos - firstNonZeroPos >= 1)
     {
         exp = pointPos - firstNonZeroPos - 1;
-    }
-    else
+    } else
     {
         exp = pointPos - firstNonZeroPos;
     }
@@ -133,7 +121,7 @@ string doubleToString(double n)
     {
         baseStr.insert(baseStr.length(), 10 - baseStr.length(), '0');
     }
-        // 十位以上，四舍五入
+    // 十位以上，四舍五入
     else
     {
         // 四舍
@@ -153,14 +141,12 @@ string doubleToString(double n)
                     {
                         baseStr[i] = '0';
                         bitFlag = true;
-                    }
-                    else
+                    } else
                     {
                         baseStr[i]++;
                         bitFlag = false;
                     }
-                }
-                else
+                } else
                 {
                     bitFlag = false;
                     break;
@@ -206,22 +192,48 @@ string doubleToString(double n)
     }
 }
 
-/* 生成多个顺序段*/
-int generateSegment(string inputFile)
+/* 快速排序*/
+void quickSort(double arr[], int left, int right)
 {
-    ifstream in(inputFile);
-    ofstream out;
-    string segmentOutputFile;
-    stringstream ss;
+    if (left < right)
+    {
+        int i = left;
+        int j = right;
+        double tmp = arr[i];
+        while (i < j)
+        {
+            while (arr[j] >= tmp && i < j)
+            {
+                j--;
+            }
+            arr[i] = arr[j];
+            while (arr[i] <= tmp && i < j)
+            {
+                i++;
+            }
+            arr[j] = arr[i];
+        }
+        arr[i] = tmp;
+        quickSort(arr, left, i - 1);
+        quickSort(arr, i + 1, right);
+    }
+}
+
+/* 生成多个顺序段*/
+int generateSegment(const string& inputFile)
+{
+    ifstream in(inputFile, ios::binary);
     // 记录最后一个 segment 截断的位置
     int cut = 0;
     int i = 0, count = 0;
     string tmp;
     while (!in.eof())
     {
+        cout << "正在生成第" << count + 1 << "个顺序段..." << endl;
         while (i < SIZE && !in.eof())
         {
             in >> tmp;
+            //in >> buf[i];
             // 判断是否有效
             if (!isValid(tmp))
             {
@@ -232,19 +244,20 @@ int generateSegment(string inputFile)
             i++;
             cut++;
         }
-        // 对一个段排序
+        // 对一个段进行内部排序
         sort(buf, buf + cut);
+        //quickSort(buf, 0, cut - 1);
         count++;
         // 将顺序段写入文件
-        ss.str("");
-        ss << count << ".txt";
-        segmentOutputFile = ss.str();
-        out.open(segmentOutputFile);
+        ofstream out(to_string(count), ios::binary);
         for (int j = 0; j < cut; j++)
         {
-            out << buf[j] << endl;
+            //out << buf[j] << endl;
+            out.write((to_string(buf[j]) + "\n").data(), to_string(buf[j]).length() + 1);
         }
         out.close();
+        out.clear();
+        cout << "第" << count << "个顺序段生成完毕" << endl;
         i = 0;
         cut = 0;
     }
@@ -258,7 +271,8 @@ void adjust(Segment *segments, int *ls, int n, int s)
     // 得到 s 的在败者树上面的父节点
     int t = (s + n) / 2;
     // 不断与父节点对比，直到败者树的根节点
-    while (t > 0) {
+    while (t > 0)
+    {
         if (s == -1)
         {
             break;
@@ -303,23 +317,18 @@ void mergeSort(Segment *segments, int *ls, int numOfSegment, string sortedFile)
     }
     // 为每个 segment 创建一个 input stream 来从段文件中读取
     ifstream in[numOfSegment];
-    string fileName;
-    stringstream ss;
     for (int i = 0; i < numOfSegment; i++)
     {
-        ss.str("");
-        ss << i + 1 << ".txt";
-        fileName = ss.str();
-        in[i].open(fileName);
+        in[i].open(to_string(i + 1), ios::binary);
     }
     // 将顺串文件的数据读到缓冲区中
     for (int i = 0; i < numOfSegment; i++)
     {
         int j = 0;
-        while(in[i] >> segments[i].buffer[j])
+        while (in[i] >> segments[i].buffer[j])
         {
             j++;
-            if(j == lengthPerSegment)
+            if (j == lengthPerSegment)
             {
                 break;
             }
@@ -328,14 +337,15 @@ void mergeSort(Segment *segments, int *ls, int numOfSegment, string sortedFile)
         segments[i].index = 0;
     }
     buildLoserTree(segments, ls, numOfSegment);
-    ofstream out(sortedFile);
+    ofstream out(sortedFile, ios::binary);
     // 剩下的 segment 个数
     int aliveSegments = numOfSegment;
     while (aliveSegments > 0)
     {
         // 输出败者树的根节点 ls[0] 对应的数字到文件中
-        out << doubleToString(segments[ls[0]].buffer[segments[ls[0]].index++]);
-        //out << segments[ls[0]].buffer[segments[ls[0]].index++] << endl;
+        string content = doubleToString(segments[ls[0]].buffer[segments[ls[0]].index++]);
+        out.write(content.data(), content.length());
+        //out.write(to_string(segments[ls[0]].buffer[segments[ls[0]].index++]).data(), to_string(segments[ls[0]].buffer[segments[ls[0]].index++]).length());
         // 一个 segment 的缓冲区读完了，需要再读一批到该 segment 的缓冲区中
         if (segments[ls[0]].index == segments[ls[0]].length)
         {
@@ -361,7 +371,7 @@ void mergeSort(Segment *segments, int *ls, int numOfSegment, string sortedFile)
         // 避免在末尾产生空行
         if (aliveSegments > 0)
         {
-            out << endl;
+            out.write("\n", 1);
         }
     }
 }
@@ -372,7 +382,13 @@ int main()
     string inputFile;
     string outputFile;
     // 读取参数
-    ifstream in("Sort.param");
+    cout << "正在解析参数" << endl;
+    ifstream in("../Sort.param");
+    if (!in.is_open())
+    {
+        cout << "Error opening file";
+        exit(1);
+    }
     string line;
     while (!in.eof())
     {
@@ -380,34 +396,34 @@ int main()
         if (line.find("path_input") == 0)
         {
             inputFile = line.substr(11);
-        }
-        else if (line.find("path_output") == 0)
+        } else if (line.find("path_output") == 0)
         {
             outputFile = line.substr(12);
         }
     }
     in.close();
+    cout << "参数解析完毕，开始生成顺序段" << endl;
 
     time_t start1, end1, start2, end2;
     start1 = clock();
     int numOfSegment = generateSegment(inputFile);
-    //int numOfSegment = 3;
     end1 = clock();
     cout << "生成顺序段完成，共" << numOfSegment << "个顺序段" << "用时: " << double(end1 - start1) / CLOCKS_PER_SEC << "秒" << endl;
 
     start2 = clock();
+    cout << "开始归并顺序段..." << endl;
     int *ls = new int[numOfSegment];
     Segment *segments = new Segment[numOfSegment];
     mergeSort(segments, ls, numOfSegment, outputFile);
     end2 = clock();
     cout << "归并顺序段完成，" << "用时: " << double(end2 - start2) / CLOCKS_PER_SEC << "秒" << endl;
-    cout << "总用时: " <<  double(end2 - start1) / CLOCKS_PER_SEC << "秒" << endl;
+    cout << "总用时: " << double(end2 - start1) / CLOCKS_PER_SEC << "秒" << endl;
 
     // 删除顺序段
     cout << "正在删除临时文件..." << endl;
     for (int i = 1; i <= numOfSegment; i++)
     {
-        string cmd = "rm " + to_string(i) + ".txt";
+        string cmd = "rm " + to_string(i);
         // 将 string 转为 system 函数要求的 char*
         system(cmd.data());
     }
